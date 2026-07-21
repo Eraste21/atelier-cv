@@ -12,15 +12,21 @@ type CvElement = {
   fontSize?: number; fontWeight?: number; color?: string; background?: string;
   align?: Align; opacity?: number; rotation?: number; radius?: number;
   locked?: boolean; hidden?: boolean; z: number; label: string;
+  clipPath?: string; backgroundLayer?: boolean; letterSpacing?: number;
 };
 
 const W = 794;
 const H = 1123;
-const STORAGE_KEY = "atelier-cv-syntiche-v1";
+const STORAGE_KEY = "atelier-cv-syntiche-v2";
+const SAVES_KEY = "atelier-cv-syntiche-saves-v2";
+type SavedProject = { id:string; name:string; savedAt:string; elements:CvElement[]; bg:string };
 
 const initialElements: CvElement[] = [
-  { id:"sidebar",kind:"shape",x:0,y:0,w:252,h:H,content:"",background:"#a9ddda",opacity:1,radius:0,z:0,label:"Sidebar menthe",locked:true },
-  { id:"accent",kind:"shape",x:252,y:0,w:14,h:H,content:"",background:"#ecf8f7",opacity:1,radius:0,z:1,label:"Ligne décorative",locked:true },
+  { id:"bgMintBlob",kind:"shape",x:-112,y:-64,w:430,h:1250,content:"",background:"linear-gradient(160deg,#bce9e5 0%,#91d3cc 62%,#6ebfb7 100%)",opacity:1,radius:0,clipPath:"ellipse(67% 58% at 32% 50%)",z:0,label:"Grande forme organique",locked:true,backgroundLayer:true },
+  { id:"bgMintHalo",kind:"shape",x:210,y:-95,w:270,h:260,content:"",background:"#eaf8f6",opacity:1,radius:999,z:1,label:"Halo supérieur",locked:true,backgroundLayer:true },
+  { id:"bgMintDrop",kind:"shape",x:690,y:940,w:190,h:230,content:"",background:"#d8f1ed",opacity:.75,radius:0,clipPath:"polygon(51% 0,90% 20%,100% 65%,70% 100%,25% 91%,0 52%,15% 14%)",rotation:18,z:1,label:"Forme basse",locked:true,backgroundLayer:true },
+  { id:"bgWhisk",kind:"icon",x:45,y:992,w:76,h:76,content:"🥄",fontSize:48,color:"#276e69",opacity:.18,rotation:24,z:2,label:"Dessin cuillère",locked:true,backgroundLayer:true },
+  { id:"bgCookie",kind:"icon",x:675,y:1007,w:70,h:70,content:"🍪",fontSize:46,color:"#7d5a36",opacity:.24,rotation:-12,z:2,label:"Dessin cookie",locked:true,backgroundLayer:true },
   { id:"name",kind:"text",x:288,y:58,w:448,h:60,content:"Syntiche Monney",fontSize:38,fontWeight:800,color:"#203536",align:"left",z:5,label:"Nom" },
   { id:"role",kind:"text",x:290,y:122,w:430,h:34,content:"EMPLOYÉE POLYVALENTE EN RESTAURATION",fontSize:16,fontWeight:800,color:"#287f7a",align:"left",z:5,label:"Poste recherché" },
   { id:"contactTitle",kind:"text",x:30,y:72,w:190,h:32,content:"CONTACT",fontSize:17,fontWeight:800,color:"#173f3d",align:"left",z:5,label:"Titre contact" },
@@ -41,8 +47,6 @@ const initialElements: CvElement[] = [
   { id:"interests",kind:"text",x:30,y:794,w:190,h:150,content:"• Sport\n• Mode\n• Danse\n• Musique\n• Lecture et chant\n• Découverte",fontSize:13,fontWeight:600,color:"#203536",align:"left",z:5,label:"Centres d’intérêt" },
   { id:"availabilityTitle",kind:"text",x:290,y:850,w:430,h:32,content:"OBJECTIF",fontSize:18,fontWeight:800,color:"#287f7a",align:"left",z:5,label:"Titre objectif" },
   { id:"availability",kind:"text",x:290,y:894,w:440,h:86,content:"Intégrer une équipe de restauration et mettre mon sérieux, mon dynamisme et ma capacité d’adaptation au service de l’accueil client et du bon déroulement du service.",fontSize:13,fontWeight:500,color:"#304445",align:"left",z:5,label:"Objectif" },
-  { id:"cookieDeco",kind:"icon",x:661,y:1020,w:62,h:62,content:"🍪",fontSize:42,color:"#287f7a",opacity:.26,rotation:-14,z:3,label:"Cookie décoratif" },
-  { id:"spoonDeco",kind:"icon",x:36,y:1012,w:70,h:70,content:"🥄",fontSize:45,color:"#287f7a",opacity:.2,rotation:22,z:3,label:"Cuillère décorative" },
 ];
 
 const kitchenItems = ["🍪","🥄","🍴","🥣","🍰","🧁","🥐","🍞","☕","🫖","🍳","🥘","🧑‍🍳","🍽️","🥕","🍋","🌿","🧂","🔪","🥗"];
@@ -52,6 +56,28 @@ const palettes = [
   {name:"Sauge",sidebar:"#c9d6bf",accent:"#52684d",soft:"#f3f6f0"},
   {name:"Vanille",sidebar:"#f4dca4",accent:"#8a6723",soft:"#fff9e9"},
   {name:"Bleu glacier",sidebar:"#bddde8",accent:"#2b6579",soft:"#eff8fb"},
+];
+
+type BackgroundPreset = { id:string; name:string; subtitle:string; page:string; preview:string; accents:string[]; items:CvElement[] };
+const bgShape=(id:string,x:number,y:number,w:number,h:number,background:string,clipPath:string,radius=0,rotation=0,opacity=1):CvElement=>({id,kind:"shape",x,y,w,h,content:"",background,clipPath,radius,rotation,opacity,z:0,label:"Décor de fond",locked:true,backgroundLayer:true});
+const bgIcon=(id:string,x:number,y:number,content:string,size:number,rotation=0,opacity=.18):CvElement=>({id,kind:"icon",x,y,w:size+24,h:size+24,content,fontSize:size,rotation,opacity,z:2,label:`Dessin ${content}`,locked:true,backgroundLayer:true});
+const backgrounds:BackgroundPreset[] = [
+  {id:"mint",name:"Menthe organique",subtitle:"Frais & professionnel",page:"#ffffff",preview:"linear-gradient(125deg,#9bd8d2 0 38%,#e8f7f5 38% 55%,#fff 55%)",accents:["#287f7a","#173f3d"],items:[
+    bgShape("mint-main",-115,-65,435,1250,"linear-gradient(160deg,#bce9e5,#72c3bb)","ellipse(67% 58% at 32% 50%)"),bgShape("mint-halo",210,-95,270,260,"#eaf8f6","circle(50%)",999),bgShape("mint-drop",690,940,190,230,"#d8f1ed","polygon(51% 0,90% 20%,100% 65%,70% 100%,25% 91%,0 52%,15% 14%)",0,18,.75),bgIcon("mint-spoon",42,990,"🥄",48,24,.17),bgIcon("mint-cookie",675,1006,"🍪",46,-12,.22)]},
+  {id:"patisserie",name:"Pâtisserie douce",subtitle:"Rose, crème & gourmande",page:"#fffaf7",preview:"radial-gradient(circle at 20% 20%,#efb8c5 0 20%,transparent 21%),linear-gradient(145deg,#fff7ef 50%,#f5d7c8 50%)",accents:["#a24f6b","#6f3c4d"],items:[
+    bgShape("pat-arch",-55,-15,340,1160,"linear-gradient(180deg,#f5d1d9,#edb7c4)","ellipse(72% 61% at 28% 48%)"),bgShape("pat-corner",575,-95,300,280,"#f8dfd3","circle(50%)",999,0,.8),bgShape("pat-wave",510,1000,360,180,"#f6e8cf","polygon(0 50%,14% 30%,30% 54%,47% 25%,64% 55%,82% 29%,100% 45%,100% 100%,0 100%)"),bgIcon("pat-cupcake",36,980,"🧁",47,-8,.22),bgIcon("pat-cookie",687,49,"🍪",40,15,.2)]},
+  {id:"bistro",name:"Bistro élégant",subtitle:"Sauge, ivoire & doré",page:"#fffdf6",preview:"linear-gradient(120deg,#7e9680 0 40%,#f5edcf 40% 48%,#fffdf6 48%)",accents:["#566f5c","#9b762f"],items:[
+    bgShape("bis-main",-145,-100,455,1300,"linear-gradient(165deg,#a9bda8,#6f8c75)","ellipse(68% 58% at 33% 50%)"),bgShape("bis-gold",225,-40,92,1200,"linear-gradient(180deg,#d9bd72,#f3e6bd)","polygon(42% 0,100% 0,58% 100%,0 100%)",0,0,.9),bgShape("bis-plate",640,930,260,260,"#eef1e4","circle(50%)",999),bgIcon("bis-fork",45,995,"🍴",48,-15,.2),bgIcon("bis-coffee",674,1002,"☕",44,10,.18)]},
+  {id:"terracotta",name:"Cuisine terracotta",subtitle:"Chaleureux & authentique",page:"#fffaf3",preview:"linear-gradient(140deg,#c97859 0 35%,#f2c6a9 35% 58%,#fff9ef 58%)",accents:["#a55237","#6d3827"],items:[
+    bgShape("ter-wave",-80,-30,390,1190,"linear-gradient(165deg,#e7a184,#c96f50)","polygon(0 0,73% 0,88% 12%,70% 26%,92% 42%,68% 59%,89% 76%,65% 100%,0 100%)"),bgShape("ter-sun",620,-95,250,250,"#f5d2a8","circle(50%)",999),bgShape("ter-blob",610,930,260,230,"#f5e1c8","polygon(25% 0,75% 7%,100% 45%,78% 100%,20% 88%,0 48%)",0,-8),bgIcon("ter-pan",35,985,"🍳",48,-16,.18),bgIcon("ter-lemon",687,1010,"🍋",42,18,.24)]},
+  {id:"market",name:"Marché frais",subtitle:"Vert feuille & citron",page:"#fffef7",preview:"radial-gradient(circle at 80% 20%,#f3d45f 0 16%,transparent 17%),linear-gradient(125deg,#88b78b 0 40%,#eef5df 40% 58%,#fff 58%)",accents:["#477c52","#7d681c"],items:[
+    bgShape("mar-leaf",-145,-120,470,1320,"linear-gradient(165deg,#b8d6a7,#77ad7d)","ellipse(68% 58% at 33% 50%)"),bgShape("mar-lemon",625,-85,270,260,"#f6df72","circle(50%)",999,0,.65),bgShape("mar-leaf2",625,920,250,270,"#dcebc9","ellipse(44% 58% at 50% 50%)",0,-32,.8),bgIcon("mar-carrot",32,992,"🥕",47,-18,.2),bgIcon("mar-herb",682,1005,"🌿",44,16,.25)]},
+  {id:"coffee",name:"Coffee shop",subtitle:"Moka, latte & crème",page:"#fffaf2",preview:"linear-gradient(130deg,#8b6249 0 38%,#d9b99d 38% 57%,#fff8ed 57%)",accents:["#77513b","#3f2c23"],items:[
+    bgShape("cof-main",-130,-60,430,1240,"linear-gradient(160deg,#c9a98e,#8c654c)","ellipse(68% 58% at 31% 50%)"),bgShape("cof-foam",205,-60,210,240,"#f3e5d2","circle(50%)",999),bgShape("cof-bean",650,955,240,220,"#ead8c2","ellipse(42% 58% at 50% 50%)",0,30,.8),bgIcon("cof-cup",40,995,"☕",48,-8,.22),bgIcon("cof-croi",680,1004,"🥐",45,12,.22)]},
+  {id:"minimal",name:"Minimal abstrait",subtitle:"Formes aériennes",page:"#fbfcfc",preview:"radial-gradient(circle at 20% 20%,#c6dedb 0 24%,transparent 25%),radial-gradient(circle at 80% 80%,#e7d9c7 0 20%,transparent 21%),#fff",accents:["#4a7471","#324c4a"],items:[
+    bgShape("min-blob",-130,-80,420,560,"#c6dedb","polygon(15% 0,82% 8%,100% 48%,72% 100%,10% 86%,0 35%)",0,-8,.9),bgShape("min-ring",620,-80,260,260,"#e9f2f1","circle(50%)",999),bgShape("min-bottom",590,940,300,260,"#eadfce","polygon(20% 0,78% 10%,100% 50%,70% 100%,10% 87%,0 38%)",0,12,.7),bgIcon("min-star",40,1000,"✦",40,0,.2),bgIcon("min-dots",690,1010,"•••",30,0,.2)]},
+  {id:"night",name:"Soirée gastronomique",subtitle:"Bleu nuit & champagne",page:"#fffdf8",preview:"linear-gradient(130deg,#283744 0 43%,#d8bd77 43% 51%,#fffdf8 51%)",accents:["#334958","#9b782f"],items:[
+    bgShape("nig-main",-120,-70,430,1250,"linear-gradient(160deg,#405563,#243542)","ellipse(67% 58% at 32% 50%)"),bgShape("nig-gold",220,-30,70,1190,"linear-gradient(180deg,#d9bd72,#f5e7b7)","polygon(35% 0,100% 0,65% 100%,0 100%)",0,0,.9),bgShape("nig-moon",650,-95,260,260,"#f3e9ca","circle(50%)",999),bgIcon("nig-plate",38,995,"🍽️",46,-8,.2),bgIcon("nig-star",690,1010,"✦",40,0,.22)]},
 ];
 
 const uid = () => Math.random().toString(36).slice(2,9);
@@ -68,6 +94,8 @@ export default function Home() {
   const [history,setHistory] = useState<CvElement[][]>([]);
   const [future,setFuture] = useState<CvElement[][]>([]);
   const [toast,setToast] = useState("");
+  const [savedProjects,setSavedProjects] = useState<SavedProject[]>([]);
+  const [mobilePanel,setMobilePanel] = useState<"left"|"right"|null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{id:string;mode:"move"|"resize";sx:number;sy:number;ox:number;oy:number;ow:number;oh:number}|null>(null);
 
@@ -79,8 +107,15 @@ export default function Home() {
   useEffect(()=>{
     const saved=localStorage.getItem(STORAGE_KEY);
     if(saved){try{const parsed=JSON.parse(saved); if(parsed.elements) {setElements(parsed.elements);setBg(parsed.bg||"#fff");}}catch{}}
+    const versions=localStorage.getItem(SAVES_KEY);
+    if(versions){try{setSavedProjects(JSON.parse(versions))}catch{}}
   },[]);
   useEffect(()=>{localStorage.setItem(STORAGE_KEY,JSON.stringify({elements,bg}))},[elements,bg]);
+  useEffect(()=>{localStorage.setItem(SAVES_KEY,JSON.stringify(savedProjects))},[savedProjects]);
+  useEffect(()=>{
+    const fit=()=>{if(window.innerWidth<=760)setZoom(Math.max(.35,Math.min(.56,(window.innerWidth-24)/W)))};
+    fit();window.addEventListener("resize",fit);return()=>window.removeEventListener("resize",fit);
+  },[]);
 
   useEffect(()=>{
     const onKey=(ev:KeyboardEvent)=>{
@@ -113,15 +148,39 @@ export default function Home() {
     const e:CvElement={id:uid(),kind,x:330,y:180,w:kind==="icon"?80:kind==="shape"?180:300,h:kind==="icon"?80:kind==="shape"?100:60,content,fontSize:kind==="icon"?46:18,fontWeight:kind==="text"?600:400,color:"#263b3c",background:kind==="shape"?"#a9ddda":"transparent",opacity:1,rotation:0,radius:kind==="shape"?18:0,align:"left",z,label};
     setElements(es=>[...es,e]);setSelected(e.id);flash(`${label} ajouté`);
   };
+  const addShape=(label:string,clipPath:string,radius=0,rotation=0)=>{
+    checkpoint(); const z=Math.max(...elements.map(e=>e.z),1)+1;
+    const e:CvElement={id:uid(),kind:"shape",x:330,y:180,w:190,h:130,content:"",background:"linear-gradient(145deg,#bce9e5,#74c6bd)",opacity:.92,rotation,radius,clipPath,align:"left",z,label};
+    setElements(es=>[...es,e]);setSelected(e.id);flash(`${label} ajoutée`);
+  };
   const remove=()=>{if(!active||active.locked)return;checkpoint();setElements(es=>es.filter(e=>e.id!==active.id));setSelected(null)};
   const duplicate=()=>{if(!active)return;checkpoint();const e={...active,id:uid(),x:active.x+18,y:active.y+18,label:active.label+" (copie)",locked:false,z:Math.max(...elements.map(x=>x.z))+1};setElements(es=>[...es,e]);setSelected(e.id)};
   const undo=()=>{if(!history.length)return;setFuture(f=>[clone(elements),...f]);setElements(history[history.length-1]);setHistory(h=>h.slice(0,-1))};
   const redo=()=>{if(!future.length)return;setHistory(h=>[...h,clone(elements)]);setElements(future[0]);setFuture(f=>f.slice(1))};
   const zMove=(dir:"up"|"down"|"top"|"bottom")=>{if(!active)return;checkpoint();const values=elements.map(e=>e.z);const z=dir==="top"?Math.max(...values)+1:dir==="bottom"?Math.min(...values)-1:active.z+(dir==="up"?1:-1);patch(active.id,{z})};
   const alignPage=(pos:"left"|"center"|"right"|"top"|"middle"|"bottom")=>{if(!active||active.locked)return;checkpoint();const c:Partial<CvElement>={}; if(pos==="left")c.x=24;if(pos==="center")c.x=(W-active.w)/2;if(pos==="right")c.x=W-active.w-24;if(pos==="top")c.y=24;if(pos==="middle")c.y=(H-active.h)/2;if(pos==="bottom")c.y=H-active.h-24;patch(active.id,c)};
-  const applyPalette=(p:typeof palettes[number])=>{checkpoint();setElements(es=>es.map(e=>e.id==="sidebar"?{...e,background:p.sidebar}:e.id==="accent"?{...e,background:p.soft}:e.color==="#287f7a"?{...e,color:p.accent}:e));flash(`Palette ${p.name}`)};
+  const applyPalette=(p:typeof palettes[number])=>{checkpoint();let shapeIndex=0;setElements(es=>es.map(e=>{if(e.backgroundLayer&&e.kind==="shape"){shapeIndex++;return{...e,background:shapeIndex===1?p.sidebar:p.soft}}if(e.kind==="text"&&e.fontWeight&&e.fontWeight>=700)return{...e,color:p.accent};return e}));flash(`Palette ${p.name}`)};
+  const applyBackground=(preset:BackgroundPreset)=>{
+    checkpoint();
+    const backgroundItems=preset.items.map(i=>({...i,id:`${preset.id}-${i.id}-${uid()}`}));
+    const lightSidebar=["night","coffee","terracotta","bistro"].includes(preset.id);
+    setElements(es=>[...backgroundItems,...es.filter(e=>!e.backgroundLayer).map(e=>{
+      if(e.kind!=="text")return e;
+      if(e.x<260)return{...e,color:lightSidebar?"#fffaf0":"#173f3d"};
+      if(e.label.startsWith("Titre")||e.id==="role")return{...e,color:preset.accents[0]};
+      return{...e,color:"#304445"};
+    })]);
+    setBg(preset.page);setSelected(null);flash(`Fond « ${preset.name} » appliqué`);
+  };
   const reset=()=>{if(!confirm("Réinitialiser le modèle ?"))return;checkpoint();setElements(clone(initialElements));setBg("#fff");setSelected("name")};
   const save=()=>{localStorage.setItem(STORAGE_KEY,JSON.stringify({elements,bg}));flash("CV sauvegardé sur cet appareil")};
+  const saveVersion=()=>{
+    const now=new Date(); const stamp=now.toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"})+" à "+now.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+    const item:SavedProject={id:uid(),name:`Version du ${stamp}`,savedAt:now.toISOString(),elements:clone(elements),bg};
+    setSavedProjects(s=>[item,...s].slice(0,12));flash("Nouvelle version locale créée");
+  };
+  const restoreVersion=(item:SavedProject)=>{checkpoint();setElements(clone(item.elements));setBg(item.bg);setSelected(null);flash("Version restaurée")};
+  const deleteVersion=(id:string)=>{setSavedProjects(s=>s.filter(x=>x.id!==id));flash("Sauvegarde supprimée")};
   const exportJson=()=>downloadBlob(JSON.stringify({version:1,elements,bg},null,2),"CV_Syntiche_Monney.json","application/json");
   const importJson=(ev:ChangeEvent<HTMLInputElement>)=>{const f=ev.target.files?.[0];if(!f)return;const reader=new FileReader();reader.onload=()=>{try{const p=JSON.parse(String(reader.result));checkpoint();setElements(p.elements);setBg(p.bg||"#fff");flash("Projet importé")}catch{alert("Fichier de projet invalide")}};reader.readAsText(f);ev.target.value=""};
 
@@ -137,12 +196,16 @@ export default function Home() {
 
   return <main className="app-shell">
     <header className="topbar">
+      <button className="mobile-tool mobile-left" onClick={()=>setMobilePanel(p=>p==="left"?null:"left")} aria-label="Ouvrir les outils">☰</button>
       <div className="brand"><span className="brand-mark">S</span><div><strong>Atelier CV</strong><small>Syntiche Monney</small></div></div>
       <div className="history-tools"><button onClick={undo} disabled={!history.length} title="Annuler (Ctrl+Z)">↶</button><button onClick={redo} disabled={!future.length} title="Rétablir">↷</button><span className="save-state">● Sauvegarde automatique</span></div>
       <div className="export-tools"><button className="ghost" onClick={save}>Sauvegarder</button><div className="menu"><button className="primary">Télécharger ▾</button><div className="menu-pop"><button onClick={()=>window.print()}>PDF / Imprimer</button><button onClick={downloadPng}>Image PNG</button><button onClick={downloadHtml}>Page HTML</button><button onClick={exportJson}>Projet JSON</button></div></div></div>
+      <button className="mobile-tool mobile-right" onClick={()=>setMobilePanel(p=>p==="right"?null:"right")} aria-label="Ouvrir les propriétés">⚙</button>
     </header>
 
-    <aside className="left-panel">
+    {mobilePanel&&<button className="mobile-scrim" onClick={()=>setMobilePanel(null)} aria-label="Fermer le panneau"/>}
+    <aside className={`left-panel ${mobilePanel==="left"?"mobile-open":""}`}>
+      <button className="mobile-close" onClick={()=>setMobilePanel(null)} aria-label="Fermer">×</button>
       <nav className="tabbar">
         <button className={tab==="design"?"active":""} onClick={()=>setTab("design")}>◈<span>Design</span></button>
         <button className={tab==="elements"?"active":""} onClick={()=>setTab("elements")}>✦<span>Éléments</span></button>
@@ -151,13 +214,15 @@ export default function Home() {
       <div className="panel-content">
         {tab==="design"&&<>
           <h2>Design du CV</h2><p className="muted">Personnalise le modèle sans perdre l’alignement.</p>
-          <label className="field"><span>Fond de la page</span><input type="color" value={bg} onChange={e=>setBg(e.target.value)}/></label>
+          <h3>Fonds complets</h3><p className="muted">Chaque fond combine formes organiques, couleurs et dessins culinaires.</p><div className="background-grid">{backgrounds.map(p=><button key={p.id} onClick={()=>applyBackground(p)}><i style={{background:p.preview}}/><span><b>{p.name}</b><small>{p.subtitle}</small></span></button>)}</div>
+          <label className="field"><span>Couleur de base</span><input type="color" value={bg} onChange={e=>setBg(e.target.value)}/></label>
           <h3>Palettes</h3><div className="palette-grid">{palettes.map(p=><button key={p.name} onClick={()=>applyPalette(p)} title={p.name}><i style={{background:p.sidebar}}/><i style={{background:p.accent}}/><i style={{background:p.soft}}/><span>{p.name}</span></button>)}</div>
           <h3>Affichage</h3><label className="switch"><input type="checkbox" checked={snap} onChange={e=>setSnap(e.target.checked)}/><span/>Magnétisme 8 px</label><label className="switch"><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/><span/>Afficher la grille</label>
+          <h3>Sauvegardes locales</h3><button className="wide save-version" onClick={saveVersion}>＋ Créer une version</button><p className="storage-note">Stockées uniquement dans ce navigateur.</p><div className="save-list">{savedProjects.length?savedProjects.map(item=><div key={item.id}><span><b>{item.name}</b><small>{new Date(item.savedAt).toLocaleString("fr-FR")}</small></span><button onClick={()=>restoreVersion(item)} title="Restaurer">↺</button><button onClick={()=>deleteVersion(item.id)} title="Supprimer">×</button></div>):<em>Aucune version enregistrée.</em>}</div>
           <h3>Projet</h3><button className="wide" onClick={reset}>Réinitialiser le modèle</button><label className="wide file">Importer un projet<input type="file" accept="application/json" onChange={importJson}/></label>
         </>}
         {tab==="elements"&&<>
-          <h2>Ajouter</h2><div className="add-grid"><button onClick={()=>addElement("text","Double-cliquez pour modifier","Texte")}>T<span>Texte</span></button><button onClick={()=>addElement("text","NOUVELLE RUBRIQUE","Titre")}>H<span>Titre</span></button><button onClick={()=>addElement("shape","","Rectangle")}>▰<span>Forme</span></button><button onClick={()=>addElement("shape","","Pastille")}>●<span>Pastille</span></button></div>
+          <h2>Ajouter</h2><div className="add-grid"><button onClick={()=>addElement("text","Double-cliquez pour modifier","Texte")}>T<span>Texte</span></button><button onClick={()=>addElement("text","NOUVELLE RUBRIQUE","Titre")}>H<span>Titre</span></button><button onClick={()=>addShape("Forme organique","polygon(14% 3%,78% 0,100% 38%,88% 86%,34% 100%,0 66%)",32,-6)}>〰<span>Blob</span></button><button onClick={()=>addShape("Cercle","circle(50%)",999)}>●<span>Cercle</span></button><button onClick={()=>addShape("Arche","ellipse(58% 82% at 50% 100%)",100)}>⌒<span>Arche</span></button><button onClick={()=>addShape("Vague","polygon(0 38%,16% 18%,33% 46%,50% 17%,67% 47%,84% 20%,100% 40%,100% 100%,0 100%)")}>≈<span>Vague</span></button></div>
           <h3>Objets de cuisine</h3><p className="muted">Clique sur un objet, puis déplace-le librement.</p><div className="emoji-grid">{kitchenItems.map((x,i)=><button key={i} onClick={()=>addElement("icon",x,`Décoration ${x}`)}>{x}</button>)}</div>
           <h3>Blocs utiles</h3><button className="wide" onClick={()=>addElement("text","DISPONIBILITÉS\nÀ compléter","Disponibilités")}>+ Disponibilités</button><button className="wide" onClick={()=>addElement("text","COMPÉTENCES\n• À compléter","Compétences")}>+ Compétences</button><button className="wide" onClick={()=>addElement("text","CERTIFICATIONS\n• À compléter","Certifications")}>+ Certifications</button>
         </>}
@@ -177,12 +242,13 @@ export default function Home() {
       </div>
     </section>
 
-    <aside className="right-panel">
+    <aside className={`right-panel ${mobilePanel==="right"?"mobile-open":""}`}>
+      <button className="mobile-close" onClick={()=>setMobilePanel(null)} aria-label="Fermer">×</button>
       <div className="property-head"><h2>Propriétés</h2>{active&&<span>{active.label}</span>}</div>
       {!active?<div className="empty-state"><b>✦</b><p>Sélectionne un élément du CV pour le personnaliser.</p></div>:<div className="properties">
         <div className="action-row"><button onClick={duplicate}>Dupliquer</button><button onClick={()=>patch(active.id,{locked:!active.locked},true)}>{active.locked?"Déverrouiller":"Verrouiller"}</button><button className="danger" onClick={remove} disabled={active.locked}>Supprimer</button></div>
         {active.kind==="text"&&<><label className="field"><span>Texte</span><textarea value={active.content} onChange={e=>patch(active.id,{content:e.target.value})}/></label><div className="field-row"><label className="field"><span>Taille</span><input type="number" min="7" max="90" value={active.fontSize||14} onChange={e=>patch(active.id,{fontSize:+e.target.value})}/></label><label className="field"><span>Graisse</span><select value={active.fontWeight||400} onChange={e=>patch(active.id,{fontWeight:+e.target.value})}><option value="400">Normal</option><option value="500">Moyen</option><option value="600">Semi-gras</option><option value="700">Gras</option><option value="800">Extra-gras</option></select></label></div><label className="field"><span>Couleur du texte</span><input type="color" value={active.color||"#263b3c"} onChange={e=>patch(active.id,{color:e.target.value})}/></label><div className="segmented"><button className={active.align==="left"?"active":""} onClick={()=>patch(active.id,{align:"left"})}>≡</button><button className={active.align==="center"?"active":""} onClick={()=>patch(active.id,{align:"center"})}>≣</button><button className={active.align==="right"?"active":""} onClick={()=>patch(active.id,{align:"right"})}>≡</button></div></>}
-        {active.kind==="shape"&&<><label className="field"><span>Couleur de la forme</span><input type="color" value={active.background||"#a9ddda"} onChange={e=>patch(active.id,{background:e.target.value})}/></label><label className="field"><span>Arrondi <output>{active.radius||0}px</output></span><input type="range" min="0" max="100" value={active.radius||0} onChange={e=>patch(active.id,{radius:+e.target.value})}/></label></>}
+        {active.kind==="shape"&&<><label className="field"><span>Couleur de la forme</span><input type="color" value={/^#[0-9a-f]{6}$/i.test(active.background||"")?active.background:"#a9ddda"} onChange={e=>patch(active.id,{background:e.target.value})}/></label><label className="field"><span>Arrondi <output>{active.radius||0}px</output></span><input type="range" min="0" max="100" value={active.radius||0} onChange={e=>patch(active.id,{radius:+e.target.value})}/></label><label className="field"><span>Découpe libre</span><select value={active.clipPath||"none"} onChange={e=>patch(active.id,{clipPath:e.target.value})}><option value="none">Rectangle</option><option value="circle(50%)">Cercle</option><option value="ellipse(68% 58% at 32% 50%)">Ovale organique</option><option value="polygon(14% 3%,78% 0,100% 38%,88% 86%,34% 100%,0 66%)">Blob</option><option value="polygon(0 38%,16% 18%,33% 46%,50% 17%,67% 47%,84% 20%,100% 40%,100% 100%,0 100%)">Vague</option></select></label></>}
         {active.kind==="icon"&&<label className="field"><span>Taille de l’illustration</span><input type="range" min="16" max="100" value={active.fontSize||40} onChange={e=>patch(active.id,{fontSize:+e.target.value})}/></label>}
         <label className="field"><span>Opacité <output>{Math.round((active.opacity??1)*100)}%</output></span><input type="range" min="0.05" max="1" step="0.05" value={active.opacity??1} onChange={e=>patch(active.id,{opacity:+e.target.value})}/></label>
         <label className="field"><span>Rotation <output>{active.rotation||0}°</output></span><input type="range" min="-180" max="180" value={active.rotation||0} onChange={e=>patch(active.id,{rotation:+e.target.value})}/></label>
@@ -195,8 +261,8 @@ export default function Home() {
   </main>;
 }
 
-function elementStyle(e:CvElement){return {left:e.x,top:e.y,width:e.w,height:e.h,zIndex:e.z,opacity:e.opacity??1,transform:`rotate(${e.rotation||0}deg)`,borderRadius:e.radius||0,background:e.background||"transparent",color:e.color||"#263b3c",fontSize:e.fontSize,fontWeight:e.fontWeight,textAlign:e.align||"left"} as React.CSSProperties}
+function elementStyle(e:CvElement){return {left:e.x,top:e.y,width:e.w,height:e.h,zIndex:e.z,opacity:e.opacity??1,transform:`rotate(${e.rotation||0}deg)`,borderRadius:e.radius||0,clipPath:e.clipPath&&e.clipPath!=="none"?e.clipPath:undefined,background:e.background||"transparent",color:e.color||"#263b3c",fontSize:e.fontSize,fontWeight:e.fontWeight,textAlign:e.align||"left",letterSpacing:e.letterSpacing} as React.CSSProperties}
 function escapeHtml(s:string){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]!)).replace(/\n/g,"<br>")}
-function renderStatic(els:CvElement[]){return els.filter(e=>!e.hidden).sort((a,b)=>a.z-b.z).map(e=>`<div class="cv-item ${e.kind}" style="left:${e.x}px;top:${e.y}px;width:${e.w}px;height:${e.h}px;z-index:${e.z};opacity:${e.opacity??1};transform:rotate(${e.rotation||0}deg);border-radius:${e.radius||0}px;background:${e.background||"transparent"};color:${e.color||"#263b3c"};font-size:${e.fontSize||14}px;font-weight:${e.fontWeight||400};text-align:${e.align||"left"}">${e.kind==="shape"?"":escapeHtml(e.content)}</div>`).join("")}
+function renderStatic(els:CvElement[]){return els.filter(e=>!e.hidden).sort((a,b)=>a.z-b.z).map(e=>`<div class="cv-item ${e.kind}" style="left:${e.x}px;top:${e.y}px;width:${e.w}px;height:${e.h}px;z-index:${e.z};opacity:${e.opacity??1};transform:rotate(${e.rotation||0}deg);border-radius:${e.radius||0}px;clip-path:${e.clipPath||"none"};background:${e.background||"transparent"};color:${e.color||"#263b3c"};font-size:${e.fontSize||14}px;font-weight:${e.fontWeight||400};text-align:${e.align||"left"}">${e.kind==="shape"?"":escapeHtml(e.content)}</div>`).join("")}
 function downloadBlob(data:BlobPart,name:string,type:string){const url=URL.createObjectURL(new Blob([data],{type}));const a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 const exportCss=`*{box-sizing:border-box}body{margin:0;background:#eee}.cv-stage{position:relative;width:${W}px;height:${H}px;overflow:hidden;font-family:Arial,Helvetica,sans-serif}.cv-item{position:absolute;white-space:pre-wrap;line-height:1.35;padding:2px;box-sizing:border-box}.cv-item.icon{display:flex;align-items:center;justify-content:center;line-height:1}.cv-item.shape{padding:0}@media print{body{background:white}.cv-stage{margin:0}}`;
