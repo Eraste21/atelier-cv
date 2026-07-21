@@ -1,25 +1,15 @@
 "use client";
 
 import { ChangeEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
-
-type Align = "left" | "center" | "right";
-type ElementKind = "text" | "icon" | "shape";
-type CvElement = {
-  id: string;
-  kind: ElementKind;
-  x: number; y: number; w: number; h: number;
-  content: string;
-  fontSize?: number; fontWeight?: number; color?: string; background?: string;
-  align?: Align; opacity?: number; rotation?: number; radius?: number;
-  locked?: boolean; hidden?: boolean; z: number; label: string;
-  clipPath?: string; backgroundLayer?: boolean; letterSpacing?: number;
-};
+import type { CvElement, ElementKind, SavedProject } from "./types";
+import { cloneElements as clone, cvFileName, downloadBlob } from "./utils/project";
 
 const W = 794;
 const H = 1123;
-const STORAGE_KEY = "atelier-cv-syntiche-v2";
-const SAVES_KEY = "atelier-cv-syntiche-saves-v2";
-type SavedProject = { id:string; name:string; savedAt:string; elements:CvElement[]; bg:string };
+const STORAGE_KEY = "studio-cv-project-v3";
+const SAVES_KEY = "studio-cv-saves-v3";
+const LEGACY_STORAGE_KEY = "atelier-cv-syntiche-v2";
+const LEGACY_SAVES_KEY = "atelier-cv-syntiche-saves-v2";
 
 const initialElements: CvElement[] = [
   { id:"bgMintBlob",kind:"shape",x:-112,y:-64,w:430,h:1250,content:"",background:"linear-gradient(160deg,#bce9e5 0%,#91d3cc 62%,#6ebfb7 100%)",opacity:1,radius:0,clipPath:"ellipse(67% 58% at 32% 50%)",z:0,label:"Grande forme organique",locked:true,backgroundLayer:true },
@@ -57,6 +47,12 @@ const palettes = [
   {name:"Vanille",sidebar:"#f4dca4",accent:"#8a6723",soft:"#fff9e9"},
   {name:"Bleu glacier",sidebar:"#bddde8",accent:"#2b6579",soft:"#eff8fb"},
 ];
+const fonts = [
+  {name:"Moderne",value:"Inter, Arial, sans-serif"},{name:"Élégante",value:"Georgia, 'Times New Roman', serif"},
+  {name:"Classique",value:"'Times New Roman', Times, serif"},{name:"Arrondie",value:"'Trebuchet MS', Arial, sans-serif"},
+  {name:"Contemporaine",value:"Verdana, Geneva, sans-serif"},{name:"Impact",value:"Impact, 'Arial Black', sans-serif"},
+  {name:"Humaniste",value:"Calibri, Candara, Arial, sans-serif"},{name:"Monospace",value:"'Courier New', Courier, monospace"}
+];
 
 type BackgroundPreset = { id:string; name:string; subtitle:string; page:string; preview:string; accents:string[]; items:CvElement[] };
 const bgShape=(id:string,x:number,y:number,w:number,h:number,background:string,clipPath:string,radius=0,rotation=0,opacity=1):CvElement=>({id,kind:"shape",x,y,w,h,content:"",background,clipPath,radius,rotation,opacity,z:0,label:"Décor de fond",locked:true,backgroundLayer:true});
@@ -78,10 +74,23 @@ const backgrounds:BackgroundPreset[] = [
     bgShape("min-blob",-130,-80,420,560,"#c6dedb","polygon(15% 0,82% 8%,100% 48%,72% 100%,10% 86%,0 35%)",0,-8,.9),bgShape("min-ring",620,-80,260,260,"#e9f2f1","circle(50%)",999),bgShape("min-bottom",590,940,300,260,"#eadfce","polygon(20% 0,78% 10%,100% 50%,70% 100%,10% 87%,0 38%)",0,12,.7),bgIcon("min-star",40,1000,"✦",40,0,.2),bgIcon("min-dots",690,1010,"•••",30,0,.2)]},
   {id:"night",name:"Soirée gastronomique",subtitle:"Bleu nuit & champagne",page:"#fffdf8",preview:"linear-gradient(130deg,#283744 0 43%,#d8bd77 43% 51%,#fffdf8 51%)",accents:["#334958","#9b782f"],items:[
     bgShape("nig-main",-120,-70,430,1250,"linear-gradient(160deg,#405563,#243542)","ellipse(67% 58% at 32% 50%)"),bgShape("nig-gold",220,-30,70,1190,"linear-gradient(180deg,#d9bd72,#f5e7b7)","polygon(35% 0,100% 0,65% 100%,0 100%)",0,0,.9),bgShape("nig-moon",650,-95,260,260,"#f3e9ca","circle(50%)",999),bgIcon("nig-plate",38,995,"🍽️",46,-8,.2),bgIcon("nig-star",690,1010,"✦",40,0,.22)]},
+  {id:"berry",name:"Dessert fruits rouges",subtitle:"Créatif & délicat",page:"#fff9fb",preview:"linear-gradient(135deg,#9b365d 0 35%,#efb8c9 35% 55%,#fff9fb 55%)",accents:["#96395c","#57243a"],items:[bgShape("ber-main",-125,-70,430,1250,"linear-gradient(160deg,#c9698a,#8e3155)","ellipse(66% 59% at 31% 50%)"),bgShape("ber-cream",205,-90,260,250,"#f8dce5","circle(50%)",999),bgShape("ber-drop",625,930,280,250,"#f3cbd8","polygon(20% 0,78% 8%,100% 52%,69% 100%,8% 84%,0 34%)",0,-10,.7),bgIcon("ber-cake",38,995,"🍰",46,-10,.22),bgIcon("ber-fruit",680,1000,"🍓",44,14,.22)]},
+  {id:"marine",name:"Brasserie marine",subtitle:"Net & contemporain",page:"#f9fcfd",preview:"linear-gradient(125deg,#17677a 0 38%,#8fd2d8 38% 53%,#f9fcfd 53%)",accents:["#17677a","#123f4b"],items:[bgShape("sea-main",-135,-60,440,1240,"linear-gradient(165deg,#4aa8b3,#17677a)","polygon(0 0,78% 0,93% 14%,72% 31%,92% 48%,70% 67%,90% 83%,66% 100%,0 100%)"),bgShape("sea-sun",620,-100,270,270,"#ccecf0","circle(50%)",999),bgShape("sea-wave",560,985,350,180,"#d9f0f2","polygon(0 45%,16% 20%,34% 48%,51% 18%,69% 50%,84% 25%,100% 43%,100% 100%,0 100%)"),bgIcon("sea-plate",38,995,"🍽️",45,-12,.2),bgIcon("sea-lemon",684,1002,"🍋",42,12,.22)]},
+  {id:"lavender",name:"Lavande éditoriale",subtitle:"Doux & sophistiqué",page:"#fdfbff",preview:"linear-gradient(140deg,#74608d 0 34%,#cfc2df 34% 58%,#fdfbff 58%)",accents:["#69537f","#3f3150"],items:[bgShape("lav-main",-125,-70,430,1250,"linear-gradient(165deg,#aa97c1,#705986)","ellipse(67% 58% at 32% 50%)"),bgShape("lav-ring",205,-100,275,260,"#ebe4f3","circle(50%)",999),bgShape("lav-bottom",610,930,280,270,"#e8dded","ellipse(45% 60% at 50% 50%)",0,24,.78),bgIcon("lav-cup",38,995,"🫖",45,-10,.2),bgIcon("lav-star",686,1008,"✦",38,0,.2)]},
+  {id:"mustard",name:"Cantine graphique",subtitle:"Audacieux & chaleureux",page:"#fffdf7",preview:"linear-gradient(130deg,#d39a24 0 36%,#2f5550 36% 51%,#fffdf7 51%)",accents:["#a66f08","#294e49"],items:[bgShape("mus-main",-90,-40,365,1200,"linear-gradient(165deg,#f0c55c,#d0951d)","polygon(0 0,74% 0,100% 18%,77% 39%,98% 61%,72% 82%,89% 100%,0 100%)"),bgShape("mus-stripe",215,-30,72,1190,"#315a54","polygon(40% 0,100% 0,60% 100%,0 100%)"),bgShape("mus-circle",635,945,250,250,"#f5e8bd","circle(50%)",999),bgIcon("mus-bowl",35,993,"🥣",46,-8,.2),bgIcon("mus-herb",681,1003,"🌿",44,16,.2)]},
+];
+
+type CvPreset={id:string;name:string;subtitle:string;preview:string;background:string;font:string;layout:"sidebar"|"editorial"|"compact"|"centered"};
+const cvPresets:CvPreset[]=[
+  {id:"fresh",name:"Restauration fraîche",subtitle:"Sidebar organique",preview:"linear-gradient(120deg,#78c7bf 0 40%,#fff 40%)",background:"mint",font:fonts[0].value,layout:"sidebar"},
+  {id:"bistro-cv",name:"Bistro premium",subtitle:"Élégant et raffiné",preview:"linear-gradient(120deg,#6f8c75 0 32%,#d9bd72 32% 39%,#fffdf6 39%)",background:"bistro",font:fonts[1].value,layout:"editorial"},
+  {id:"brasserie-cv",name:"Brasserie moderne",subtitle:"Compact et dynamique",preview:"linear-gradient(135deg,#17677a 0 28%,#e7f5f6 28% 62%,#fff 62%)",background:"marine",font:fonts[4].value,layout:"compact"},
+  {id:"pastry-cv",name:"Pâtisserie créative",subtitle:"Doux et expressif",preview:"radial-gradient(circle at 18% 30%,#c9698a 0 22%,transparent 23%),linear-gradient(145deg,#fff5f8,#f4d7df)",background:"berry",font:fonts[3].value,layout:"centered"},
+  {id:"editorial-cv",name:"Éditorial lavande",subtitle:"Sophistiqué et aéré",preview:"linear-gradient(125deg,#705986 0 30%,#e9e1f0 30% 52%,#fff 52%)",background:"lavender",font:fonts[1].value,layout:"editorial"},
+  {id:"graphic-cv",name:"Cantine graphique",subtitle:"Fort et original",preview:"linear-gradient(120deg,#d0951d 0 34%,#315a54 34% 43%,#fffdf7 43%)",background:"mustard",font:fonts[0].value,layout:"compact"}
 ];
 
 const uid = () => Math.random().toString(36).slice(2,9);
-const clone = (els:CvElement[]) => JSON.parse(JSON.stringify(els)) as CvElement[];
 
 export default function Home() {
   const [elements,setElements] = useState<CvElement[]>(initialElements);
@@ -105,9 +114,9 @@ export default function Home() {
   const patch=(id:string,changes:Partial<CvElement>,save=false)=>{if(save) checkpoint();setElements(es=>es.map(e=>e.id===id?{...e,...changes}:e));};
 
   useEffect(()=>{
-    const saved=localStorage.getItem(STORAGE_KEY);
+    const saved=localStorage.getItem(STORAGE_KEY)||localStorage.getItem(LEGACY_STORAGE_KEY);
     if(saved){try{const parsed=JSON.parse(saved); if(parsed.elements) {setElements(parsed.elements);setBg(parsed.bg||"#fff");}}catch{}}
-    const versions=localStorage.getItem(SAVES_KEY);
+    const versions=localStorage.getItem(SAVES_KEY)||localStorage.getItem(LEGACY_SAVES_KEY);
     if(versions){try{setSavedProjects(JSON.parse(versions))}catch{}}
   },[]);
   useEffect(()=>{localStorage.setItem(STORAGE_KEY,JSON.stringify({elements,bg}))},[elements,bg]);
@@ -172,7 +181,27 @@ export default function Home() {
     })]);
     setBg(preset.page);setSelected(null);flash(`Fond « ${preset.name} » appliqué`);
   };
+  const applyCvPreset=(preset:CvPreset)=>{
+    checkpoint();const backdrop=backgrounds.find(x=>x.id===preset.background)!;
+    const edits:Record<string,Partial<CvElement>>={};
+    if(preset.layout==="editorial")Object.assign(edits,{name:{x:282,y:52,w:465,fontSize:40},role:{x:282,y:116,w:465},profileTitle:{x:282,y:190},profile:{x:282,y:230,w:460},pathTitle:{x:282,y:378},hei:{x:282,y:428},bem:{x:282,y:554},bac:{x:282,y:680},availabilityTitle:{x:282,y:842},availability:{x:282,y:886,w:460}});
+    if(preset.layout==="compact")Object.assign(edits,{name:{x:300,y:46,w:445,fontSize:36},role:{x:300,y:105,w:445},profileTitle:{x:300,y:175},profile:{x:300,y:211,w:445,h:104},pathTitle:{x:300,y:350},hei:{x:300,y:395,h:96},bem:{x:300,y:505,h:96},bac:{x:300,y:615,h:104},availabilityTitle:{x:300,y:765},availability:{x:300,y:808,w:440}});
+    if(preset.layout==="centered")Object.assign(edits,{name:{x:270,y:48,w:475,fontSize:39,align:"center"},role:{x:270,y:111,w:475,align:"center"},profileTitle:{x:295,y:190,align:"center"},profile:{x:285,y:228,w:455,align:"center"},pathTitle:{x:295,y:380,align:"center"},hei:{x:295,y:425,align:"center"},bem:{x:295,y:550,align:"center"},bac:{x:295,y:675,align:"center"},availabilityTitle:{x:295,y:838,align:"center"},availability:{x:285,y:880,w:455,align:"center"}});
+    const light=["bistro","berry","marine","lavender","mustard"].includes(backdrop.id);
+    const next=elements.filter(e=>!e.backgroundLayer).map(e=>{
+      const heading=e.kind==="text"&&(e.label.startsWith("Titre")||e.id==="role");const isName=e.id==="name";
+      const typography:Partial<CvElement>=e.kind==="text"?{fontFamily:preset.font,...(heading?{fontWeight:800,letterSpacing:preset.layout==="compact"?1.2:.5}:{}),...(isName?{fontWeight:800,letterSpacing:preset.layout==="editorial"?.3:0}:{}),...(preset.layout==="compact"&&heading&&e.id!=="role"?{fontSize:17}:{})}:{};
+      return{...e,...(edits[e.id]||{}),...typography,...(e.kind==="text"&&e.x<260?{color:light?"#fffdf7":"#173f3d"}:{}),...(heading?{color:backdrop.accents[0]}:{})};
+    });
+    setElements([...backdrop.items.map(i=>({...i,id:`${preset.id}-${i.id}-${uid()}`})),...next]);setBg(backdrop.page);setSelected(null);flash(`Modèle « ${preset.name} » appliqué`);
+  };
+  const applyFontToAll=(font:string)=>{checkpoint();setElements(es=>es.map(e=>e.kind==="text"?{...e,fontFamily:font}:e));flash("Police appliquée à tout le CV")};
   const reset=()=>{if(!confirm("Réinitialiser le modèle ?"))return;checkpoint();setElements(clone(initialElements));setBg("#fff");setSelected("name")};
+  const newBlankCv=()=>{
+    if(!confirm("Créer un CV vierge ? Pensez à créer une version locale du projet actuel si vous souhaitez le conserver."))return;checkpoint();
+    const blanks:Record<string,string>={name:"Prénom NOM",role:"POSTE RECHERCHÉ",phone:"☎  Téléphone",address:"⌖  Ville, pays",email:"✉  adresse@email.com",profile:"Présentez votre profil, vos qualités et votre objectif professionnel.",hei:"ANNÉE - ANNÉE\nIntitulé de la formation\nÉtablissement - Ville",bem:"ANNÉE - ANNÉE\nIntitulé de la formation\nÉtablissement - Ville",bac:"ANNÉE - ANNÉE\nDiplôme ou certification\nÉtablissement - Ville",qualities:"• Qualité\n• Qualité\n• Qualité\n• Qualité",languages:"Langue - Niveau\nLangue - Niveau",interests:"• Centre d’intérêt\n• Centre d’intérêt\n• Centre d’intérêt",availability:"Décrivez votre objectif professionnel et ce que vous souhaitez apporter à l’entreprise."};
+    setElements(clone(initialElements).map(e=>blanks[e.id]!==undefined?{...e,content:blanks[e.id]}:e));setBg("#fff");setSelected("name");flash("Nouveau CV vierge créé");
+  };
   const save=()=>{localStorage.setItem(STORAGE_KEY,JSON.stringify({elements,bg}));flash("CV sauvegardé sur cet appareil")};
   const saveVersion=()=>{
     const now=new Date(); const stamp=now.toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"})+" à "+now.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
@@ -181,23 +210,24 @@ export default function Home() {
   };
   const restoreVersion=(item:SavedProject)=>{checkpoint();setElements(clone(item.elements));setBg(item.bg);setSelected(null);flash("Version restaurée")};
   const deleteVersion=(id:string)=>{setSavedProjects(s=>s.filter(x=>x.id!==id));flash("Sauvegarde supprimée")};
-  const exportJson=()=>downloadBlob(JSON.stringify({version:1,elements,bg},null,2),"CV_Syntiche_Monney.json","application/json");
+  const exportName=()=>cvFileName(elements.find(e=>e.id==="name")?.content||"Mon CV");
+  const exportJson=()=>downloadBlob(JSON.stringify({version:1,elements,bg},null,2),`${exportName()}.json`,"application/json");
   const importJson=(ev:ChangeEvent<HTMLInputElement>)=>{const f=ev.target.files?.[0];if(!f)return;const reader=new FileReader();reader.onload=()=>{try{const p=JSON.parse(String(reader.result));checkpoint();setElements(p.elements);setBg(p.bg||"#fff");flash("Projet importé")}catch{alert("Fichier de projet invalide")}};reader.readAsText(f);ev.target.value=""};
 
   const downloadHtml=()=>{
-    const html=`<!doctype html><html lang="fr"><meta charset="utf-8"><title>CV Syntiche Monney</title><style>${exportCss}</style><body><main class="cv-stage" style="background:${bg}">${renderStatic(elements)}</main></body></html>`;
-    downloadBlob(html,"CV_Syntiche_Monney.html","text/html");
+    const html=`<!doctype html><html lang="fr"><meta charset="utf-8"><title>${escapeHtml(elements.find(e=>e.id==="name")?.content||"Mon CV")}</title><style>${exportCss}</style><body><main class="cv-stage" style="background:${bg}">${renderStatic(elements)}</main></body></html>`;
+    downloadBlob(html,`${exportName()}.html`,"text/html");
   };
   const downloadPng=async()=>{
     const html=renderStatic(elements);
     const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml"><style>${exportCss}</style><main class="cv-stage" style="background:${bg}">${html}</main></div></foreignObject></svg>`;
-    const url=URL.createObjectURL(new Blob([svg],{type:"image/svg+xml"}));const img=new Image();img.onload=()=>{const c=document.createElement("canvas");c.width=W*2;c.height=H*2;const ctx=c.getContext("2d")!;ctx.scale(2,2);ctx.drawImage(img,0,0);URL.revokeObjectURL(url);c.toBlob(b=>{if(b)downloadBlob(b,"CV_Syntiche_Monney.png","image/png")});};img.src=url;
+    const url=URL.createObjectURL(new Blob([svg],{type:"image/svg+xml"}));const img=new Image();img.onload=()=>{const c=document.createElement("canvas");c.width=W*2;c.height=H*2;const ctx=c.getContext("2d")!;ctx.scale(2,2);ctx.drawImage(img,0,0);URL.revokeObjectURL(url);c.toBlob(b=>{if(b)downloadBlob(b,`${exportName()}.png`,"image/png")});};img.src=url;
   };
 
   return <main className="app-shell">
     <header className="topbar">
       <button className="mobile-tool mobile-left" onClick={()=>setMobilePanel(p=>p==="left"?null:"left")} aria-label="Ouvrir les outils">☰</button>
-      <div className="brand"><span className="brand-mark">S</span><div><strong>Atelier CV</strong><small>Syntiche Monney</small></div></div>
+      <div className="brand"><span className="brand-mark">CV</span><div><strong>Studio CV</strong><small>Créateur de CV pour tous</small></div></div>
       <div className="history-tools"><button onClick={undo} disabled={!history.length} title="Annuler (Ctrl+Z)">↶</button><button onClick={redo} disabled={!future.length} title="Rétablir">↷</button><span className="save-state">● Sauvegarde automatique</span></div>
       <div className="export-tools"><button className="ghost" onClick={save}>Sauvegarder</button><div className="menu"><button className="primary">Télécharger ▾</button><div className="menu-pop"><button onClick={()=>window.print()}>PDF / Imprimer</button><button onClick={downloadPng}>Image PNG</button><button onClick={downloadHtml}>Page HTML</button><button onClick={exportJson}>Projet JSON</button></div></div></div>
       <button className="mobile-tool mobile-right" onClick={()=>setMobilePanel(p=>p==="right"?null:"right")} aria-label="Ouvrir les propriétés">⚙</button>
@@ -214,12 +244,14 @@ export default function Home() {
       <div className="panel-content">
         {tab==="design"&&<>
           <h2>Design du CV</h2><p className="muted">Personnalise le modèle sans perdre l’alignement.</p>
+          <h3>Modèles de CV prêts à l’emploi</h3><p className="muted">Applique une composition complète tout en conservant tes textes.</p><div className="preset-grid">{cvPresets.map(p=><button key={p.id} onClick={()=>applyCvPreset(p)}><i style={{background:p.preview}}/><span><b>{p.name}</b><small>{p.subtitle}</small></span></button>)}</div>
           <h3>Fonds complets</h3><p className="muted">Chaque fond combine formes organiques, couleurs et dessins culinaires.</p><div className="background-grid">{backgrounds.map(p=><button key={p.id} onClick={()=>applyBackground(p)}><i style={{background:p.preview}}/><span><b>{p.name}</b><small>{p.subtitle}</small></span></button>)}</div>
           <label className="field"><span>Couleur de base</span><input type="color" value={bg} onChange={e=>setBg(e.target.value)}/></label>
+          <h3>Police globale</h3><label className="field"><span>Appliquer à tous les textes</span><select defaultValue="" onChange={e=>{if(e.target.value)applyFontToAll(e.target.value);e.currentTarget.value=""}}><option value="" disabled>Choisir une police…</option>{fonts.map(f=><option key={f.name} value={f.value} style={{fontFamily:f.value}}>{f.name}</option>)}</select></label>
           <h3>Palettes</h3><div className="palette-grid">{palettes.map(p=><button key={p.name} onClick={()=>applyPalette(p)} title={p.name}><i style={{background:p.sidebar}}/><i style={{background:p.accent}}/><i style={{background:p.soft}}/><span>{p.name}</span></button>)}</div>
           <h3>Affichage</h3><label className="switch"><input type="checkbox" checked={snap} onChange={e=>setSnap(e.target.checked)}/><span/>Magnétisme 8 px</label><label className="switch"><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/><span/>Afficher la grille</label>
           <h3>Sauvegardes locales</h3><button className="wide save-version" onClick={saveVersion}>＋ Créer une version</button><p className="storage-note">Stockées uniquement dans ce navigateur.</p><div className="save-list">{savedProjects.length?savedProjects.map(item=><div key={item.id}><span><b>{item.name}</b><small>{new Date(item.savedAt).toLocaleString("fr-FR")}</small></span><button onClick={()=>restoreVersion(item)} title="Restaurer">↺</button><button onClick={()=>deleteVersion(item.id)} title="Supprimer">×</button></div>):<em>Aucune version enregistrée.</em>}</div>
-          <h3>Projet</h3><button className="wide" onClick={reset}>Réinitialiser le modèle</button><label className="wide file">Importer un projet<input type="file" accept="application/json" onChange={importJson}/></label>
+          <h3>Projet</h3><button className="wide new-project" onClick={newBlankCv}>＋ Créer un CV vierge</button><button className="wide" onClick={reset}>Charger l’exemple Syntiche</button><label className="wide file">Importer un projet<input type="file" accept="application/json" onChange={importJson}/></label>
         </>}
         {tab==="elements"&&<>
           <h2>Ajouter</h2><div className="add-grid"><button onClick={()=>addElement("text","Double-cliquez pour modifier","Texte")}>T<span>Texte</span></button><button onClick={()=>addElement("text","NOUVELLE RUBRIQUE","Titre")}>H<span>Titre</span></button><button onClick={()=>addShape("Forme organique","polygon(14% 3%,78% 0,100% 38%,88% 86%,34% 100%,0 66%)",32,-6)}>〰<span>Blob</span></button><button onClick={()=>addShape("Cercle","circle(50%)",999)}>●<span>Cercle</span></button><button onClick={()=>addShape("Arche","ellipse(58% 82% at 50% 100%)",100)}>⌒<span>Arche</span></button><button onClick={()=>addShape("Vague","polygon(0 38%,16% 18%,33% 46%,50% 17%,67% 47%,84% 20%,100% 40%,100% 100%,0 100%)")}>≈<span>Vague</span></button></div>
@@ -247,7 +279,7 @@ export default function Home() {
       <div className="property-head"><h2>Propriétés</h2>{active&&<span>{active.label}</span>}</div>
       {!active?<div className="empty-state"><b>✦</b><p>Sélectionne un élément du CV pour le personnaliser.</p></div>:<div className="properties">
         <div className="action-row"><button onClick={duplicate}>Dupliquer</button><button onClick={()=>patch(active.id,{locked:!active.locked},true)}>{active.locked?"Déverrouiller":"Verrouiller"}</button><button className="danger" onClick={remove} disabled={active.locked}>Supprimer</button></div>
-        {active.kind==="text"&&<><label className="field"><span>Texte</span><textarea value={active.content} onChange={e=>patch(active.id,{content:e.target.value})}/></label><div className="field-row"><label className="field"><span>Taille</span><input type="number" min="7" max="90" value={active.fontSize||14} onChange={e=>patch(active.id,{fontSize:+e.target.value})}/></label><label className="field"><span>Graisse</span><select value={active.fontWeight||400} onChange={e=>patch(active.id,{fontWeight:+e.target.value})}><option value="400">Normal</option><option value="500">Moyen</option><option value="600">Semi-gras</option><option value="700">Gras</option><option value="800">Extra-gras</option></select></label></div><label className="field"><span>Couleur du texte</span><input type="color" value={active.color||"#263b3c"} onChange={e=>patch(active.id,{color:e.target.value})}/></label><div className="segmented"><button className={active.align==="left"?"active":""} onClick={()=>patch(active.id,{align:"left"})}>≡</button><button className={active.align==="center"?"active":""} onClick={()=>patch(active.id,{align:"center"})}>≣</button><button className={active.align==="right"?"active":""} onClick={()=>patch(active.id,{align:"right"})}>≡</button></div></>}
+        {active.kind==="text"&&<><label className="field"><span>Texte</span><textarea value={active.content} onChange={e=>patch(active.id,{content:e.target.value})}/></label><label className="field"><span>Police d’écriture</span><select value={active.fontFamily||fonts[0].value} onChange={e=>patch(active.id,{fontFamily:e.target.value},true)}>{fonts.map(f=><option key={f.name} value={f.value} style={{fontFamily:f.value}}>{f.name}</option>)}</select></label><div className="field-row"><label className="field"><span>Taille</span><input type="number" min="7" max="90" value={active.fontSize||14} onChange={e=>patch(active.id,{fontSize:+e.target.value})}/></label><label className="field"><span>Graisse</span><select value={active.fontWeight||400} onChange={e=>patch(active.id,{fontWeight:+e.target.value})}><option value="400">Normal</option><option value="500">Moyen</option><option value="600">Semi-gras</option><option value="700">Gras</option><option value="800">Extra-gras</option></select></label></div><label className="field"><span>Couleur du texte</span><input type="color" value={active.color||"#263b3c"} onChange={e=>patch(active.id,{color:e.target.value})}/></label><div className="segmented"><button className={active.align==="left"?"active":""} onClick={()=>patch(active.id,{align:"left"})}>≡</button><button className={active.align==="center"?"active":""} onClick={()=>patch(active.id,{align:"center"})}>≣</button><button className={active.align==="right"?"active":""} onClick={()=>patch(active.id,{align:"right"})}>≡</button></div></>}
         {active.kind==="shape"&&<><label className="field"><span>Couleur de la forme</span><input type="color" value={/^#[0-9a-f]{6}$/i.test(active.background||"")?active.background:"#a9ddda"} onChange={e=>patch(active.id,{background:e.target.value})}/></label><label className="field"><span>Arrondi <output>{active.radius||0}px</output></span><input type="range" min="0" max="100" value={active.radius||0} onChange={e=>patch(active.id,{radius:+e.target.value})}/></label><label className="field"><span>Découpe libre</span><select value={active.clipPath||"none"} onChange={e=>patch(active.id,{clipPath:e.target.value})}><option value="none">Rectangle</option><option value="circle(50%)">Cercle</option><option value="ellipse(68% 58% at 32% 50%)">Ovale organique</option><option value="polygon(14% 3%,78% 0,100% 38%,88% 86%,34% 100%,0 66%)">Blob</option><option value="polygon(0 38%,16% 18%,33% 46%,50% 17%,67% 47%,84% 20%,100% 40%,100% 100%,0 100%)">Vague</option></select></label></>}
         {active.kind==="icon"&&<label className="field"><span>Taille de l’illustration</span><input type="range" min="16" max="100" value={active.fontSize||40} onChange={e=>patch(active.id,{fontSize:+e.target.value})}/></label>}
         <label className="field"><span>Opacité <output>{Math.round((active.opacity??1)*100)}%</output></span><input type="range" min="0.05" max="1" step="0.05" value={active.opacity??1} onChange={e=>patch(active.id,{opacity:+e.target.value})}/></label>
@@ -261,8 +293,7 @@ export default function Home() {
   </main>;
 }
 
-function elementStyle(e:CvElement){return {left:e.x,top:e.y,width:e.w,height:e.h,zIndex:e.z,opacity:e.opacity??1,transform:`rotate(${e.rotation||0}deg)`,borderRadius:e.radius||0,clipPath:e.clipPath&&e.clipPath!=="none"?e.clipPath:undefined,background:e.background||"transparent",color:e.color||"#263b3c",fontSize:e.fontSize,fontWeight:e.fontWeight,textAlign:e.align||"left",letterSpacing:e.letterSpacing} as React.CSSProperties}
+function elementStyle(e:CvElement){return {left:e.x,top:e.y,width:e.w,height:e.h,zIndex:e.z,opacity:e.opacity??1,transform:`rotate(${e.rotation||0}deg)`,borderRadius:e.radius||0,clipPath:e.clipPath&&e.clipPath!=="none"?e.clipPath:undefined,background:e.background||"transparent",color:e.color||"#263b3c",fontSize:e.fontSize,fontWeight:e.fontWeight,fontFamily:e.fontFamily,textAlign:e.align||"left",letterSpacing:e.letterSpacing} as React.CSSProperties}
 function escapeHtml(s:string){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]!)).replace(/\n/g,"<br>")}
-function renderStatic(els:CvElement[]){return els.filter(e=>!e.hidden).sort((a,b)=>a.z-b.z).map(e=>`<div class="cv-item ${e.kind}" style="left:${e.x}px;top:${e.y}px;width:${e.w}px;height:${e.h}px;z-index:${e.z};opacity:${e.opacity??1};transform:rotate(${e.rotation||0}deg);border-radius:${e.radius||0}px;clip-path:${e.clipPath||"none"};background:${e.background||"transparent"};color:${e.color||"#263b3c"};font-size:${e.fontSize||14}px;font-weight:${e.fontWeight||400};text-align:${e.align||"left"}">${e.kind==="shape"?"":escapeHtml(e.content)}</div>`).join("")}
-function downloadBlob(data:BlobPart,name:string,type:string){const url=URL.createObjectURL(new Blob([data],{type}));const a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+function renderStatic(els:CvElement[]){return els.filter(e=>!e.hidden).sort((a,b)=>a.z-b.z).map(e=>`<div class="cv-item ${e.kind}" style="left:${e.x}px;top:${e.y}px;width:${e.w}px;height:${e.h}px;z-index:${e.z};opacity:${e.opacity??1};transform:rotate(${e.rotation||0}deg);border-radius:${e.radius||0}px;clip-path:${e.clipPath||"none"};background:${e.background||"transparent"};color:${e.color||"#263b3c"};font-size:${e.fontSize||14}px;font-weight:${e.fontWeight||400};font-family:${e.fontFamily||"Arial, sans-serif"};text-align:${e.align||"left"}">${e.kind==="shape"?"":escapeHtml(e.content)}</div>`).join("")}
 const exportCss=`*{box-sizing:border-box}body{margin:0;background:#eee}.cv-stage{position:relative;width:${W}px;height:${H}px;overflow:hidden;font-family:Arial,Helvetica,sans-serif}.cv-item{position:absolute;white-space:pre-wrap;line-height:1.35;padding:2px;box-sizing:border-box}.cv-item.icon{display:flex;align-items:center;justify-content:center;line-height:1}.cv-item.shape{padding:0}@media print{body{background:white}.cv-stage{margin:0}}`;
