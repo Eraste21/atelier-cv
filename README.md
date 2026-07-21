@@ -1,4 +1,4 @@
-# Atelier CV - Syntiche Monney
+# Atelier CV
 
 Éditeur de CV visuel prêt à être hébergé sur Vercel.
 
